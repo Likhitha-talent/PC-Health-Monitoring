@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AEROSYS // Cloud PC Health Telemetry HUD</title>
+  
+  <!-- Modern Futuristic Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@300;400;500;700&family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
+  
+  <!-- FontAwesome Icons & Chart.js & Supabase JS -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body class="cyber-hud-theme">
+
+  <!-- Ambient Background Canvas & Grid Overlay -->
+  <div class="hud-grid-overlay"></div>
+  <div class="ambient-glow glow-cyan"></div>
+  <div class="ambient-glow glow-purple"></div>
+
+  <!-- Audio ping for threshold breach -->
+  <audio id="alert-sound" preload="auto">
+    <source src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" type="audio/mpeg">
+  </audio>
+
+  <!-- Top Cyber Command Bar -->
+  <header class="hud-top-bar">
+    <div class="brand-zone">
+      <div class="brand-logo-icon">
+        <i class="fa-solid fa-microchip"></i>
+      </div>
+      <div class="brand-text">
+        <div class="hud-tag">A.Y. 2026-27 // BIS505 CLOUD COMPUTING</div>
+        <h1 class="brand-title">AERO<span>SYS</span> <span class="brand-sub">PC HEALTH HUD</span></h1>
+      </div>
+    </div>
+
+    <!-- Live Telemetry Radar Beacon -->
+    <div class="telemetry-radar-beacon">
+      <span class="radar-ping"></span>
+      <span class="radar-dot"></span>
+      <span class="radar-label" id="beacon-status">TELEMETRY STREAM: ACTIVE</span>
+    </div>
+
+    <!-- Controls & Device Switcher -->
+    <div class="hud-controls-zone">
+      <!-- Mode Switcher: Live Supabase vs Real-time Simulator -->
+      <div class="mode-toggle-group">
+        <button id="btn-mode-sim" class="btn-mode active" title="Simulate dynamic live PC telemetry stream">
+          <i class="fa-solid fa-bolt"></i> DEMO SIM
+        </button>
+        <button id="btn-mode-cloud" class="btn-mode" title="Connect directly to Supabase cloud database">
+          <i class="fa-solid fa-cloud"></i> LIVE CLOUD
+        </button>
+      </div>
+
+      <!-- Real Device Badge Detected from Laptop Agent -->
+      <div class="real-device-chip" id="current-device-chip" title="Active monitored laptop">
+        <i class="fa-solid fa-laptop"></i>
+        <div class="device-text-block">
+          <span class="device-title" id="lbl-device-name">DETECTING LAPTOP...</span>
+          <span class="device-uuid-tag" id="lbl-device-uuid">PAIRING ID: --</span>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <button id="btn-toggle-audio" class="hud-icon-btn active" title="Toggle Alert Sound">
+        <i class="fa-solid fa-volume-high"></i>
+      </button>
+
+      <button id="btn-open-settings" class="hud-icon-btn" title="Cloud Database Settings">
+        <i class="fa-solid fa-sliders"></i>
+      </button>
+
+      <div class="hud-clock" id="system-clock">18:45:00 UTC</div>
+    </div>
+  </header>
+
+  <!-- Main HUD Grid Layout -->
+  <main class="hud-main-grid">
+
+    <!-- HERO METRICS ROW (4 Circular Holographic Gauges) -->
+    <section class="gauges-quad-container">
+      
+      <!-- CPU GAUGES CARD -->
+      <div class="hud-card gauge-card" id="card-cpu">
+        <div class="card-corner tl"></div><div class="card-corner tr"></div>
+        <div class="card-corner bl"></div><div class="card-corner br"></div>
+        <div class="card-header">
+          <span class="card-title"><i class="fa-solid fa-bolt"></i> PROCESSOR UTILIZATION</span>
+          <span class="card-badge badge-cpu" id="badge-cpu">NORMAL</span>
+        </div>
+        <div class="gauge-wrapper">
+          <svg class="radial-gauge" viewBox="0 0 160 160">
+            <circle class="gauge-bg-track" cx="80" cy="80" r="65"></circle>
+            <circle class="gauge-fill-track fill-cpu" id="gauge-cpu-fill" cx="80" cy="80" r="65"></circle>
+          </svg>
+          <div class="gauge-center-content">
+            <span class="gauge-value" id="val-cpu">0.0<small>%</small></span>
+            <span class="gauge-sub" id="freq-cpu">2.40 GHz</span>
+          </div>
+        </div>
+        <div class="gauge-footer-stats">
+          <div class="stat-pill"><span>CORES</span> <strong id="lbl-cpu-cores">8 LOGICAL</strong></div>
+          <div class="stat-pill"><span>PEAK</span> <strong id="lbl-cpu-peak">0.0%</strong></div>
+        </div>
+      </div>
+
+      <!-- RAM GAUGES CARD -->
+      <div class="hud-card gauge-card" id="card-ram">
+        <div class="card-corner tl"></div><div class="card-corner tr"></div>
+        <div class="card-corner bl"></div><div class="card-corner br"></div>
+        <div class="card-header">
+          <span class="card-title"><i class="fa-solid fa-memory"></i> MEMORY CONSUMPTION</span>
+          <span class="card-badge badge-ram" id="badge-ram">NORMAL</span>
+        </div>
+        <div class="gauge-wrapper">
+          <svg class="radial-gauge" viewBox="0 0 160 160">
+            <circle class="gauge-bg-track" cx="80" cy="80" r="65"></circle>
+            <circle class="gauge-fill-track fill-ram" id="gauge-ram-fill" cx="80" cy="80" r="65"></circle>
+          </svg>
+          <div class="gauge-center-content">
+            <span class="gauge-value" id="val-ram">0.0<small>%</small></span>
+            <span class="gauge-sub" id="gb-ram">0 / 16 GB</span>
+          </div>
+        </div>
+        <div class="gauge-footer-stats">
+          <div class="stat-pill"><span>USED</span> <strong id="lbl-ram-used">0.0 GB</strong></div>
+          <div class="stat-pill"><span>FREE</span> <strong id="lbl-ram-free">0.0 GB</strong></div>
+        </div>
+      </div>
+
+      <!-- DISK GAUGES CARD -->
+      <div class="hud-card gauge-card" id="card-disk">
+        <div class="card-corner tl"></div><div class="card-corner tr"></div>
+        <div class="card-corner bl"></div><div class="card-corner br"></div>
+        <div class="card-header">
+          <span class="card-title"><i class="fa-solid fa-hard-drive"></i> STORAGE PARTITION</span>
+          <span class="card-badge badge-disk" id="badge-disk">NORMAL</span>
+        </div>
+        <div class="gauge-wrapper">
+          <svg class="radial-gauge" viewBox="0 0 160 160">
+            <circle class="gauge-bg-track" cx="80" cy="80" r="65"></circle>
+            <circle class="gauge-fill-track fill-disk" id="gauge-disk-fill" cx="80" cy="80" r="65"></circle>
+          </svg>
+          <div class="gauge-center-content">
+            <span class="gauge-value" id="val-disk">0.0<small>%</small></span>
+            <span class="gauge-sub" id="gb-disk">0 / 512 GB</span>
+          </div>
+        </div>
+        <div class="gauge-footer-stats">
+          <div class="stat-pill"><span>USED</span> <strong id="lbl-disk-used">0 GB</strong></div>
+          <div class="stat-pill"><span>AVAILABLE</span> <strong id="lbl-disk-free">0 GB</strong></div>
+        </div>
+      </div>
+
+      <!-- BATTERY / POWER CARD -->
+      <div class="hud-card gauge-card" id="card-batt">
+        <div class="card-corner tl"></div><div class="card-corner tr"></div>
+        <div class="card-corner bl"></div><div class="card-corner br"></div>
+        <div class="card-header">
+          <span class="card-title"><i class="fa-solid fa-plug-circle-bolt"></i> POWER & BATTERY</span>
+          <span class="card-badge badge-batt" id="badge-batt">AC ON</span>
+        </div>
+        <div class="gauge-wrapper">
+          <svg class="radial-gauge" viewBox="0 0 160 160">
+            <circle class="gauge-bg-track" cx="80" cy="80" r="65"></circle>
+            <circle class="gauge-fill-track fill-batt" id="gauge-batt-fill" cx="80" cy="80" r="65"></circle>
+          </svg>
+          <div class="gauge-center-content">
+            <span class="gauge-value" id="val-batt">--<small>%</small></span>
+            <span class="gauge-sub" id="sub-batt">AC Power</span>
+          </div>
+        </div>
+        <div class="gauge-footer-stats">
+          <div class="stat-pill"><span>STATUS</span> <strong id="lbl-batt-status">PLUGGED</strong></div>
+          <div class="stat-pill"><span>EST. TIME</span> <strong id="lbl-batt-time">~3h 15m</strong></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MIDDLE ROW: CHARTS SECTION -->
+    <section class="charts-row-container">
+      
+      <!-- Real-Time 60s Live Waveform Chart -->
+      <div class="hud-card chart-card large-chart">
+        <div class="card-corner tl"></div><div class="card-corner tr"></div>
+        <div class="card-corner bl"></div><div class="card-corner br"></div>
+        <div class="card-header">
+          <div>
+            <span class="card-title"><i class="fa-solid fa-chart-line"></i> REAL-TIME TELEMETRY STREAM (ROLLING 60s)</span>
+            <span class="card-sub-info">Sampling resolution: 5 seconds | Ingest RPC: ingest_readings()</span>
+          </div>
+          <div class="chart-legend-pills">
+            <span class="legend-pill cpu-pill">● CPU Load</span>
+            <span class="legend-pill ram-pill">● RAM Load</span>
+          </div>
+        </div>
+        <div class="chart-wrapper">
+          <canvas id="realtimeChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Historical Analytics (Hourly Rollups from pg_cron) -->
+      <div class="hud-card chart-card medium-chart">
+        <div class="card-corner tl"></div><div class="card-corner tr"></div>
+        <div class="card-corner bl"></div><div class="card-corner br"></div>
+        <div class="card-header">
+          <div>
+            <span class="card-title"><i class="fa-solid fa-chart-column"></i> 24H HISTORICAL AGGREGATE</span>
+            <span class="card-sub-info">Calculated via Supabase pg_cron hourly rollup engine</span>
+          </div>
+          <span class="card-badge">HOURLY MEAN</span>
+        </div>
+        <div class="chart-wrapper">
+          <canvas id="historicalChart"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- LOWER ROW: CYBER TERMINAL & EVENT-DRIVEN ALERTS FEED -->
+    <section class="bottom-row-container">
+
+      <!-- CYBER COMMAND TERMINAL (Live Ingest & Packet Logs) -->
+      <div class="hud-card terminal-card">
+        <div class="card-corner tl"></div><div class="card-corner tr"></div>
+        <div class="card-corner bl"></div><div class="card-corner br"></div>
+        <div class="card-header">
+          <span class="card-title"><i class="fa-solid fa-terminal"></i> TELEMETRY EVENT BUS // INGEST LOGS</span>
+          <div class="terminal-ctrls">
+            <span class="term-status-chip" id="rpc-status-chip">RPC: 200 OK</span>
+            <button id="btn-clear-term" class="hud-mini-btn"><i class="fa-solid fa-trash-can"></i> CLEAR</button>
+          </div>
+        </div>
+        <div class="terminal-body" id="cyber-terminal-feed">
+          <!-- Real-time logs injected here -->
+        </div>
+        <div class="terminal-footer">
+          <span><i class="fa-solid fa-shield-halved"></i> ROW LEVEL SECURITY: ACTIVE</span>
+          <span id="term-rate">TRANSMIT RATE: 1 PKT / 5s</span>
+        </div>
+      </div>
+
+      <!-- EVENT-DRIVEN ALERTS DRAWER -->
+      <div class="hud-card alerts-card">
+        <div class="card-corner tl"></div><div class="card-corner tr"></div>
+        <div class="card-corner bl"></div><div class="card-corner br"></div>
+        <div class="card-header">
+          <span class="card-title"><i class="fa-solid fa-triangle-exclamation"></i> EVENT-DRIVEN ALERTS</span>
+          <span class="alert-count-badge" id="active-alert-count">0 ACTIVE</span>
+        </div>
+        <div class="alerts-list-container" id="alerts-list">
+          <!-- Dynamic Alert Cards -->
+        </div>
+        <div class="alerts-footer">
+          <button id="btn-trigger-test-alert" class="hud-mini-btn pulse-glow">
+            <i class="fa-solid fa-vial"></i> SIMULATE THRESHOLD BREACH
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- REAL LAPTOP HARDWARE PROFILE & CLOUD STATUS PANEL -->
+    <section class="fleet-row-container">
+      <div class="hud-card fleet-card">
+        <div class="card-corner tl"></div><div class="card-corner tr"></div>
+        <div class="card-corner bl"></div><div class="card-corner br"></div>
+        <div class="card-header">
+          <div>
+            <span class="card-title"><i class="fa-solid fa-laptop-code"></i> ACTIVE HOST MACHINE PROFILE & TELEMETRY LINK</span>
+            <span class="card-sub-info">Directly inspected by Python psutil desktop agent & authenticated via Supabase RLS</span>
+          </div>
+          <span class="card-badge badge-active" id="badge-host-online">CONNECTED NODE</span>
+        </div>
+        <div class="hardware-profile-grid" id="hardware-profile-grid">
+          <div class="profile-stat-box">
+            <span class="p-label"><i class="fa-solid fa-network-wired"></i> MACHINE HOSTNAME</span>
+            <span class="p-value" id="prof-hostname">LAPTOP-5MUFGF0H</span>
+          </div>
+          <div class="profile-stat-box">
+            <span class="p-label"><i class="fa-brands fa-windows"></i> OPERATING SYSTEM</span>
+            <span class="p-value" id="prof-os">Windows 11 (AMD64)</span>
+          </div>
+          <div class="profile-stat-box">
+            <span class="p-label"><i class="fa-solid fa-microchip"></i> CPU CORES</span>
+            <span class="p-value" id="prof-cores">12 Logical Cores</span>
+          </div>
+          <div class="profile-stat-box">
+            <span class="p-label"><i class="fa-solid fa-memory"></i> TOTAL RAM</span>
+            <span class="p-value" id="prof-ram">15.71 GB</span>
+          </div>
+          <div class="profile-stat-box">
+            <span class="p-label"><i class="fa-solid fa-hard-drive"></i> PRIMARY DISK</span>
+            <span class="p-value" id="prof-disk">474.72 GB</span>
+          </div>
+          <div class="profile-stat-box">
+            <span class="p-label"><i class="fa-solid fa-fingerprint"></i> DEVICE UUID</span>
+            <span class="p-value uuid-code" id="prof-uuid">--</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- CLOUD CONFIGURATION MODAL -->
+  <div class="hud-modal-overlay" id="settings-modal">
+    <div class="hud-modal-box">
+      <div class="card-corner tl"></div><div class="card-corner tr"></div>
+      <div class="card-corner bl"></div><div class="card-corner br"></div>
+      <div class="modal-header">
+        <h3><i class="fa-solid fa-cloud"></i> SUPABASE CLOUD CREDENTIALS</h3>
+        <button id="btn-close-modal" class="hud-icon-btn"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-desc">
+          Enter your Supabase project URL and anon public key to stream real-time database changes directly to this dashboard.
+        </p>
+        <div class="input-field-group">
+          <label>SUPABASE PROJECT URL</label>
+          <input type="text" id="cfg-supabase-url" placeholder="https://xyzcompany.supabase.co" />
+        </div>
+        <div class="input-field-group">
+          <label>SUPABASE ANON / PUBLIC KEY</label>
+          <input type="password" id="cfg-supabase-key" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..." />
+        </div>
+        <div class="modal-status-msg" id="modal-conn-msg"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-test-cloud" class="hud-action-btn secondary"><i class="fa-solid fa-satellite-dish"></i> TEST PING</button>
+        <button id="btn-save-cloud" class="hud-action-btn primary"><i class="fa-solid fa-check"></i> SAVE & CONNECT</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FLOATING ALERT TOAST NOTIFICATION CONTAINER -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- Scripts -->
+  <script src="js/config.js"></script>
+  <script src="js/terminal.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/simulator.js"></script>
+  <script src="js/supabase-client.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

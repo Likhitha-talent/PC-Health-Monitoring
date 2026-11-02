@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "name": "aerosys-pc-health-hud",
+  "cleanUrls": true,
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/$1"
+    }
+  ]
+}
