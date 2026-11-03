@@ -12,6 +12,10 @@ local_buffer.db
 local_buffer.db-journal
 device_identity.json
 current_device.json
+device_info.local.js
+*.local.js
+rotate_dashboard_token.sql
+*.local.sql
 
 # IDE & Editor folders
 .vscode/

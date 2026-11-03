@@ -3,7 +3,8 @@
 -- pg_cron Scheduled Jobs: Lifecycle Management & Hourly Aggregation
 -- ==============================================================================
 
--- 1. Enable pg_cron extension (available on Supabase Free Tier)
+-- 1. Enable pg_cron extension (Available on Supabase Free Tier)
+-- Note: In Supabase, pg_cron can also be toggled in Dashboard -> Database -> Extensions.
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 
 -- 2. Aggregation Function: Aggregates metrics into hourly rollups
@@ -11,6 +12,7 @@ CREATE OR REPLACE FUNCTION public.aggregate_hourly_metrics()
 RETURNS VOID
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 BEGIN
     INSERT INTO public.metrics_hourly (
@@ -57,6 +59,7 @@ CREATE OR REPLACE FUNCTION public.purge_expired_raw_metrics()
 RETURNS INTEGER
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 DECLARE
     v_deleted_count INTEGER;
@@ -69,20 +72,28 @@ BEGIN
 END;
 $$;
 
--- 4. Schedule pg_cron jobs
--- Unschedule existing jobs with same names if re-running
-SELECT cron.unschedule(jobid) FROM cron.job WHERE jobname IN ('hourly_metrics_rollup', 'purge_raw_metrics_7days');
+-- 4. Schedule pg_cron jobs safely
+DO $$
+BEGIN
+    -- Verify pg_cron is installed and cron.job table is accessible
+    IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
+        -- Unschedule existing jobs with same names if re-running
+        PERFORM cron.unschedule(jobid) 
+        FROM cron.job 
+        WHERE jobname IN ('hourly_metrics_rollup', 'purge_raw_metrics_7days');
 
--- Job A: Hourly rollup runs 5 minutes past every hour ('5 * * * *')
-SELECT cron.schedule(
-    'hourly_metrics_rollup',
-    '5 * * * *',
-    'SELECT public.aggregate_hourly_metrics();'
-);
+        -- Job A: Hourly rollup runs 5 minutes past every hour ('5 * * * *')
+        PERFORM cron.schedule(
+            'hourly_metrics_rollup',
+            '5 * * * *',
+            'SELECT public.aggregate_hourly_metrics();'
+        );
 
--- Job B: Retention purge runs every night at 03:00 UTC ('0 3 * * *')
-SELECT cron.schedule(
-    'purge_raw_metrics_7days',
-    '0 3 * * *',
-    'SELECT public.purge_expired_raw_metrics();'
-);
+        -- Job B: Retention purge runs every night at 03:00 UTC ('0 3 * * *')
+        PERFORM cron.schedule(
+            'purge_raw_metrics_7days',
+            '0 3 * * *',
+            'SELECT public.purge_expired_raw_metrics();'
+        );
+    END IF;
+END $$;

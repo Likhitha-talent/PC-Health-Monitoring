@@ -7,7 +7,8 @@ during network outages (Eventual Consistency).
 import sqlite3
 import json
 import threading
-from typing import List, Tuple, Dict, Any
+from contextlib import contextmanager
+from typing import List, Tuple, Dict, Any, Generator
 from .config import SQLITE_DB_PATH
 
 _lock = threading.Lock()
@@ -17,13 +18,18 @@ class LocalBuffer:
         self.db_path = db_path
         self._init_db()
 
-    def _get_connection(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connection(self) -> Generator[sqlite3.Connection, None, None]:
+        """Provides a managed SQLite connection that closes reliably upon block exit."""
         conn = sqlite3.connect(self.db_path, timeout=10.0)
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            yield conn
+        finally:
+            conn.close()
 
     def _init_db(self):
-        with _lock, self._get_connection() as conn:
+        with _lock, self._connection() as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS buffered_metrics (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,7 +50,7 @@ class LocalBuffer:
         """Appends a new metric reading into the local SQLite buffer."""
         payload_str = json.dumps(reading)
         timestamp = reading.get("client_timestamp", "")
-        with _lock, self._get_connection() as conn:
+        with _lock, self._connection() as conn:
             cursor = conn.execute("""
                 INSERT INTO buffered_metrics (payload, client_timestamp, is_synced)
                 VALUES (?, ?, 0)
@@ -57,7 +63,7 @@ class LocalBuffer:
         Retrieves a batch of unsynced records ordered by id.
         Returns list of (record_id, metric_dict).
         """
-        with _lock, self._get_connection() as conn:
+        with _lock, self._connection() as conn:
             cursor = conn.execute("""
                 SELECT id, payload 
                 FROM buffered_metrics 
@@ -80,7 +86,7 @@ class LocalBuffer:
         if not ids:
             return
         placeholders = ",".join("?" for _ in ids)
-        with _lock, self._get_connection() as conn:
+        with _lock, self._connection() as conn:
             conn.execute(f"""
                 UPDATE buffered_metrics 
                 SET is_synced = 1, synced_at = CURRENT_TIMESTAMP 
@@ -90,7 +96,7 @@ class LocalBuffer:
 
     def get_stats(self) -> Dict[str, int]:
         """Returns buffer counts for UI display."""
-        with _lock, self._get_connection() as conn:
+        with _lock, self._connection() as conn:
             cursor = conn.execute("""
                 SELECT 
                     COUNT(CASE WHEN is_synced = 0 THEN 1 END) AS unsynced,
@@ -105,7 +111,7 @@ class LocalBuffer:
 
     def prune_synced(self, keep_days: int = 2):
         """Removes synced records older than keep_days to manage local disk space."""
-        with _lock, self._get_connection() as conn:
+        with _lock, self._connection() as conn:
             conn.execute("""
                 DELETE FROM buffered_metrics 
                 WHERE is_synced = 1 

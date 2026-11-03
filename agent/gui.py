@@ -3,11 +3,13 @@ Desktop Agent Tkinter Graphical Interface
 Displays live hardware metrics, buffer state, and cloud sync status.
 """
 
+import time
 import tkinter as tk
 from tkinter import ttk, messagebox
 import datetime
 from typing import Callable, Optional
-from .config import HARDWARE_INFO, SUPABASE_URL, SUPABASE_KEY, ENV_FILE, open_dashboard_in_browser
+from . import config
+from .config import HARDWARE_INFO, open_dashboard_in_browser
 
 # Aesthetic Color Palette (Dark High-Tech Theme)
 BG_DARK = "#0e131f"
@@ -24,9 +26,10 @@ class AgentGUI:
     def __init__(self, root: tk.Tk, on_manual_sync: Callable[[], None]):
         self.root = root
         self.on_manual_sync = on_manual_sync
+        self._last_alert_times = {}
         
         self.root.title("PC Health Monitoring Agent - Cloud Sync")
-        self.root.geometry("640x720")
+        self.root.geometry("640x740")
         self.root.minsize(580, 650)
         self.root.configure(bg=BG_DARK)
 
@@ -233,6 +236,13 @@ class AgentGUI:
             return "Amber.Horizontal.TProgressbar"
         return "Cyan.Horizontal.TProgressbar"
 
+    def _check_and_log_alert(self, metric_type: str, message: str, cooldown: float = 30.0):
+        now = time.time()
+        last_t = self._last_alert_times.get(metric_type, 0.0)
+        if now - last_t >= cooldown:
+            self._last_alert_times[metric_type] = now
+            self.append_log(message)
+
     def update_metrics(self, data: dict):
         """Thread-safe UI update of live hardware figures."""
         # CPU
@@ -242,6 +252,10 @@ class AgentGUI:
         self.cpu_bar.configure(style=self._get_bar_style_for_val(cpu))
         freq_str = f"Freq: {data.get('cpu_freq_mhz', '--')} MHz | Cores: {HARDWARE_INFO['cpu_cores']}"
         self.cpu_sub.config(text=freq_str)
+        if cpu >= 90.0:
+            self._check_and_log_alert("CPU_CRIT", f"🚨 CRITICAL CPU SPIKE: {cpu}% utilization!")
+        elif cpu >= 80.0:
+            self._check_and_log_alert("CPU_WARN", f"⚠️ HIGH CPU LOAD: {cpu}% utilization.")
 
         # RAM
         ram = data.get("ram_percent", 0.0)
@@ -249,6 +263,10 @@ class AgentGUI:
         self.ram_bar["value"] = ram
         self.ram_bar.configure(style=self._get_bar_style_for_val(ram))
         self.ram_sub.config(text=f"Used: {data.get('ram_used_gb', 0)} GB / {data.get('ram_total_gb', 0)} GB")
+        if ram >= 90.0:
+            self._check_and_log_alert("RAM_CRIT", f"🚨 CRITICAL RAM EXHAUSTION: {ram}% ({data.get('ram_used_gb', 0)} GB used)!")
+        elif ram >= 85.0:
+            self._check_and_log_alert("RAM_WARN", f"⚠️ ELEVATED RAM USAGE: {ram}%.")
 
         # Disk
         disk = data.get("disk_percent", 0.0)
@@ -256,6 +274,10 @@ class AgentGUI:
         self.disk_bar["value"] = disk
         self.disk_bar.configure(style=self._get_bar_style_for_val(disk))
         self.disk_sub.config(text=f"Used: {data.get('disk_used_gb', 0)} GB / {data.get('disk_total_gb', 0)} GB")
+        if disk >= 92.0:
+            self._check_and_log_alert("DISK_CRIT", f"🚨 CRITICAL DISK FULL: {disk}% capacity used!")
+        elif disk >= 85.0:
+            self._check_and_log_alert("DISK_WARN", f"⚠️ HIGH DISK OCCUPANCY: {disk}% capacity used.")
 
         # Battery
         batt = data.get("battery_percent")
@@ -265,6 +287,8 @@ class AgentGUI:
             self.batt_bar["value"] = batt
             self.batt_bar.configure(style="Emerald.Horizontal.TProgressbar" if batt > 20 else "Red.Horizontal.TProgressbar")
             self.batt_sub.config(text=f"Status: {plugged}")
+            if batt <= 15.0 and not data.get("battery_plugged"):
+                self._check_and_log_alert("BATT_CRIT", f"🚨 CRITICAL BATTERY: {batt}% remaining! Connect AC adapter.")
         else:
             self.batt_val.config(text="N/A")
             self.batt_bar["value"] = 100
@@ -299,36 +323,41 @@ class AgentGUI:
 
     def _on_open_dashboard(self):
         target = open_dashboard_in_browser()
-        self.append_log(f"Opened web dashboard linked to this device ID.")
+        self.append_log("Opened web dashboard linked to this device ID.")
 
     def _open_config_dialog(self):
         dialog = tk.Toplevel(self.root)
-        dialog.title("Cloud Configuration (Supabase)")
-        dialog.geometry("500x320")
+        dialog.title("Cloud Configuration (Supabase & Dashboard)")
+        dialog.geometry("520x420")
         dialog.configure(bg=CARD_BG)
         dialog.transient(self.root)
         dialog.grab_set()
 
-        lbl_hdr = tk.Label(dialog, text="Supabase Credentials", font=("Segoe UI", 12, "bold"), fg=CYAN_ACCENT, bg=CARD_BG)
-        lbl_hdr.pack(anchor="w", padx=20, pady=(20, 10))
+        lbl_hdr = tk.Label(dialog, text="Cloud Settings & Endpoints", font=("Segoe UI", 12, "bold"), fg=CYAN_ACCENT, bg=CARD_BG)
+        lbl_hdr.pack(anchor="w", padx=20, pady=(18, 10))
 
         tk.Label(dialog, text="Supabase Project URL:", font=("Segoe UI", 9), fg=TEXT_MUTED, bg=CARD_BG).pack(anchor="w", padx=20)
         ent_url = tk.Entry(dialog, bg="#0e131f", fg=TEXT_PRIMARY, insertbackground=CYAN_ACCENT, font=("Segoe UI", 9))
-        ent_url.pack(fill="x", padx=20, pady=(4, 12))
-        ent_url.insert(0, SUPABASE_URL)
+        ent_url.pack(fill="x", padx=20, pady=(4, 10))
+        ent_url.insert(0, config.SUPABASE_URL)
 
         tk.Label(dialog, text="Supabase anon / public Key:", font=("Segoe UI", 9), fg=TEXT_MUTED, bg=CARD_BG).pack(anchor="w", padx=20)
         ent_key = tk.Entry(dialog, bg="#0e131f", fg=TEXT_PRIMARY, insertbackground=CYAN_ACCENT, font=("Segoe UI", 9))
-        ent_key.pack(fill="x", padx=20, pady=(4, 20))
-        ent_key.insert(0, SUPABASE_KEY)
+        ent_key.pack(fill="x", padx=20, pady=(4, 10))
+        ent_key.insert(0, config.SUPABASE_KEY)
+
+        tk.Label(dialog, text="Web Dashboard URL (Leave blank for local dashboard):", font=("Segoe UI", 9), fg=TEXT_MUTED, bg=CARD_BG).pack(anchor="w", padx=20)
+        ent_dash = tk.Entry(dialog, bg="#0e131f", fg=TEXT_PRIMARY, insertbackground=CYAN_ACCENT, font=("Segoe UI", 9))
+        ent_dash.pack(fill="x", padx=20, pady=(4, 18))
+        ent_dash.insert(0, config.DASHBOARD_URL)
 
         def save():
             new_url = ent_url.get().strip()
             new_key = ent_key.get().strip()
-            with open(ENV_FILE, "w", encoding="utf-8") as f:
-                f.write(f"SUPABASE_URL={new_url}\n")
-                f.write(f"SUPABASE_KEY={new_key}\n")
-            messagebox.showinfo("Saved", "Configuration saved to .env file! Restart agent to apply.", parent=dialog)
+            new_dash = ent_dash.get().strip()
+            config.save_credentials(new_url, new_key, new_dash)
+            self.append_log("Configuration updated and saved to agent/.env.")
+            messagebox.showinfo("Saved", "Configuration saved! Settings updated dynamically.", parent=dialog)
             dialog.destroy()
 
         btn_save = tk.Button(dialog, text="Save Configuration", bg=CYAN_ACCENT, fg="#000", font=("Segoe UI", 9, "bold"), relief="flat", padx=16, pady=6, command=save)

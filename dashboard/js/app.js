@@ -82,8 +82,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateGauges(data);
 
     // Push point into Chart.js live waveform
-    const timeLabel = new Date().toTimeString().split(' ')[0];
-    TelemetryCharts.pushRealtimePoint(timeLabel, data.cpu_percent, data.ram_percent);
+    const timeLabel = new Date(data.client_timestamp || Date.now()).toTimeString().split(' ')[0];
+    TelemetryCharts.pushRealtimePoint(timeLabel, Number(data.cpu_percent) || 0, Number(data.ram_percent) || 0);
 
     // Evaluate Client-Side Thresholds for instant alert/chime
     checkClientThresholds(data);
@@ -92,23 +92,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     const rpcLatency = Math.round(18 + Math.random() * 25);
     CyberTerminal.log(
       'INGEST',
-      `[${data.hostname || devInfo.hostname}] CPU: ${data.cpu_percent}% | RAM: ${data.ram_percent}% (${data.ram_used_gb}GB) | RTT: ${rpcLatency}ms`,
-      data.cpu_percent >= 90 ? 'crit' : data.cpu_percent >= 80 ? 'warn' : 'ok'
+      `[${data.hostname || devInfo.hostname}] CPU: ${Number(data.cpu_percent || 0).toFixed(1)}% | RAM: ${Number(data.ram_percent || 0).toFixed(1)}% (${Number(data.ram_used_gb || 0).toFixed(1)}GB) | RTT: ${rpcLatency}ms`,
+      Number(data.cpu_percent || 0) >= 90 ? 'crit' : Number(data.cpu_percent || 0) >= 80 ? 'warn' : 'ok'
     );
   }
-
   function updateGauges(data) {
-    const totalRam = data.ram_total_gb || devInfo.ram_total_gb || 16;
-    const totalDisk = data.disk_total_gb || devInfo.disk_total_gb || 512;
+    const totalRam = Number(data.ram_total_gb || devInfo.ram_total_gb || 16);
+    const totalDisk = Number(data.disk_total_gb || devInfo.disk_total_gb || 512);
 
     // A. CPU
-    const cpuVal = data.cpu_percent || 0.0;
+    const cpuVal = Number(data.cpu_percent) || 0.0;
     if (cpuVal > peakCpu) peakCpu = cpuVal;
 
     document.getElementById('val-cpu').innerHTML = `${cpuVal.toFixed(1)}<small>%</small>`;
     document.getElementById('lbl-cpu-peak').textContent = `${peakCpu.toFixed(1)}%`;
     if (data.cpu_freq_mhz) {
-      document.getElementById('freq-cpu').textContent = `${(data.cpu_freq_mhz / 1000).toFixed(2)} GHz`;
+      document.getElementById('freq-cpu').textContent = `${(Number(data.cpu_freq_mhz) / 1000).toFixed(2)} GHz`;
     }
     setGaugeOffset('gauge-cpu-fill', cpuVal, 'badge-cpu', {
       warn: AppConfig.THRESHOLDS.CPU_WARN,
@@ -116,11 +115,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // B. RAM
-    const ramVal = data.ram_percent || 0.0;
+    const ramVal = Number(data.ram_percent) || 0.0;
     document.getElementById('val-ram').innerHTML = `${ramVal.toFixed(1)}<small>%</small>`;
-    document.getElementById('gb-ram').textContent = `${data.ram_used_gb || 0} / ${totalRam} GB`;
-    document.getElementById('lbl-ram-used').textContent = `${data.ram_used_gb || 0} GB`;
-    const ramFree = Math.max(0, totalRam - (data.ram_used_gb || 0)).toFixed(1);
+    document.getElementById('gb-ram').textContent = `${Number(data.ram_used_gb || 0).toFixed(1)} / ${totalRam} GB`;
+    document.getElementById('lbl-ram-used').textContent = `${Number(data.ram_used_gb || 0).toFixed(1)} GB`;
+    const ramFree = Math.max(0, totalRam - (Number(data.ram_used_gb) || 0)).toFixed(1);
     document.getElementById('lbl-ram-free').textContent = `${ramFree} GB`;
     setGaugeOffset('gauge-ram-fill', ramVal, 'badge-ram', {
       warn: AppConfig.THRESHOLDS.RAM_WARN,
@@ -128,11 +127,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // C. Disk
-    const diskVal = data.disk_percent || 0.0;
+    const diskVal = Number(data.disk_percent) || 0.0;
     document.getElementById('val-disk').innerHTML = `${diskVal.toFixed(1)}<small>%</small>`;
-    document.getElementById('gb-disk').textContent = `${data.disk_used_gb || 0} / ${totalDisk} GB`;
-    document.getElementById('lbl-disk-used').textContent = `${data.disk_used_gb || 0} GB`;
-    const diskFree = Math.max(0, totalDisk - (data.disk_used_gb || 0)).toFixed(0);
+    document.getElementById('gb-disk').textContent = `${Number(data.disk_used_gb || 0).toFixed(1)} / ${totalDisk} GB`;
+    document.getElementById('lbl-disk-used').textContent = `${Number(data.disk_used_gb || 0).toFixed(1)} GB`;
+    const diskFree = Math.max(0, totalDisk - (Number(data.disk_used_gb) || 0)).toFixed(0);
     document.getElementById('lbl-disk-free').textContent = `${diskFree} GB`;
     setGaugeOffset('gauge-disk-fill', diskVal, 'badge-disk', {
       warn: AppConfig.THRESHOLDS.DISK_WARN,
@@ -140,25 +139,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // D. Battery
-    const battVal = data.battery_percent;
-    if (battVal !== null && battVal !== undefined) {
-      document.getElementById('val-batt').innerHTML = `${battVal}<small>%</small>`;
-      const isPlugged = data.battery_plugged;
+    const battVal = (data.battery_percent !== null && data.battery_percent !== undefined) ? Number(data.battery_percent) : null;
+    if (battVal !== null && !isNaN(battVal)) {
+      document.getElementById('val-batt').innerHTML = `${battVal.toFixed(0)}<small>%</small>`;
+      const isPlugged = Boolean(data.battery_plugged);
       document.getElementById('sub-batt').textContent = isPlugged ? 'AC Connected' : 'Discharging';
       document.getElementById('lbl-batt-status').textContent = isPlugged ? 'PLUGGED 🔌' : 'ON BATTERY 🔋';
       document.getElementById('badge-batt').textContent = isPlugged ? 'AC CHARGING' : 'BATTERY';
       
       const battFill = document.getElementById('gauge-batt-fill');
-      const offset = GAUGE_CIRCUMFERENCE * (1 - Math.min(100, Math.max(0, battVal)) / 100);
-      battFill.style.strokeDashoffset = offset;
-      if (battVal <= 15 && !isPlugged) {
-        battFill.style.stroke = 'var(--neon-crimson)';
-      } else {
-        battFill.style.stroke = 'var(--neon-amber)';
+      if (battFill) {
+        const offset = GAUGE_CIRCUMFERENCE * (1 - Math.min(100, Math.max(0, battVal)) / 100);
+        battFill.style.strokeDashoffset = offset;
+        if (battVal <= 15 && !isPlugged) {
+          battFill.style.stroke = 'var(--neon-crimson)';
+        } else {
+          battFill.style.stroke = 'var(--neon-amber)';
+        }
       }
     }
   }
-
   function setGaugeOffset(elementId, percent, badgeId, thresholds) {
     const el = document.getElementById(elementId);
     const badge = document.getElementById(badgeId);
@@ -181,7 +181,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function checkClientThresholds(data) {
-    if (data.cpu_percent >= AppConfig.THRESHOLDS.CPU_CRIT) {
+    const cpu = Number(data.cpu_percent) || 0;
+    const ram = Number(data.ram_percent) || 0;
+    if (cpu >= AppConfig.THRESHOLDS.CPU_CRIT) {
       pushAlert({
         severity: 'critical',
         metric_type: 'CPU',
@@ -369,6 +371,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     onTelemetryReading(spike);
   });
 
-  // Start with Telemetry simulator by default
-  TelemetrySimulator.start(onTelemetryReading);
+  // Auto-connect to Live Cloud if Supabase credentials and dashboard token are present
+  if (AppConfig.getSupabaseUrl() && AppConfig.getSupabaseKey() && AppConfig.getDashboardToken()) {
+    CyberTerminal.log('BOOT', 'Auto-launching Live Cloud telemetry stream for paired laptop.', 'info');
+    btnModeCloud.click();
+  } else {
+    // Start with Telemetry simulator by default
+    TelemetrySimulator.start(onTelemetryReading);
+  }
 });
